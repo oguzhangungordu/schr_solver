@@ -4,11 +4,29 @@ import h5py
 import numpy as np
 import scipy.sparse as sp
 import scipy.sparse.linalg as la
+import math
 
 def V_SHO(args):
     mesh,kx,ky,cx,cy = args
     (x,y) = mesh
     V = 0.5 * (kx*(x-cx)**2 + ky*(y-cy)**2)
+    return V
+
+def V_IW(args):
+    mesh,Lx,Ly,cx,cy = args
+    (x,y) = mesh
+
+    V = np.zeros((x.shape[0],x.shape[0]))
+    x_axis = x[0]
+    y_axis = x[0]
+
+    for x_ind,x_val in enumerate(x_axis):
+      for y_ind,y_val in enumerate(y_axis):
+        if (((x_val>0.5*(2*cx-Lx)) and (x_val<=0.5*(2*cx+Lx))) and ((y_val>0.5*(2*cy-Ly)) and (y_val<=0.5*(2*cy+Ly)))):
+          V[y_ind,x_ind] = 20.
+        else:
+          V[y_ind,x_ind] = 0.
+  
     return V
 
 class solver(object):
@@ -59,7 +77,7 @@ class solver(object):
                 ky = F['ky'][...]
         else:
             
-            np.random.seed(1000)
+            #np.random.seed(1000)
             data = np.zeros((self.number, self.L, self.L, 1))
             labels = np.zeros((self.number, 1))
             kx = np.random.rand(self.number) * 0.16
@@ -84,4 +102,83 @@ class solver(object):
                 F.create_dataset('ky', data=ky, compression='gzip')
         
         return data, labels
+
+    def generate_file_IW(self):
+        if os.path.isfile(self.filename):
+            with h5py.File(self.filename, 'r') as F:
+                data = F['potential'][...]
+                labels = F['energy'][...]
+                Lx = F['Lx'][...]
+                Ly = F['Ly'][...]
+        else:
+            
+            #np.random.seed(1000)
+            data = np.zeros((self.number, self.L, self.L, 1))
+            labels = np.zeros((self.number, 1))
+
+            E = np.zeros((self.number, 1))
+            Lx = np.zeros((self.number, 1))
+            Ly = np.zeros((self.number, 1))
+            cx = np.zeros((self.number, 1))
+            cy = np.zeros((self.number, 1))
+
+            bar = progressbar.ProgressBar()
+            for a in bar(range(int(self.number/2))):
+              E[a] = np.random.rand(1) * 0.4 
+              Lx[a] = (np.random.rand(1) * 11) + 4
+              Ly[a] = 1/np.sqrt(2*E[a]/(pow(np.pi,2))-1/(pow(Lx[a],2)))
+
+              while np.isnan(Ly[a][0]) or Lx[a][0]>self.limit*2 or Ly[a][0]>self.limit*2:
+                E[a] = np.random.rand(1) * 0.4 
+                Lx[a] = (np.random.rand(1) * 11) + 4
+                Ly[a] = 1/np.sqrt(2*E[a]/(pow(np.pi,2))-1/(pow(Lx[a],2)))
+                #print(Ly[a])
         
+              cx[a] = (np.random.rand(1) - 0.5) * 16
+              cy[a] = (np.random.rand(1) - 0.5) * 16
+              while self.limit< abs(cx[a][0])+Lx[a][0]/2: 
+                cx[a] = (np.random.rand(1) - 0.5) * 16
+                #print("*"*10)
+              while self.limit< abs(cy[a][0])+Ly[a][0]/2: 
+                cy[a] = (np.random.rand(1) - 0.5) * 16
+                #print("*"*10)
+            
+            bar = progressbar.ProgressBar()
+            for a in bar(range(int(self.number/2),self.number)):
+              E[a] = np.random.rand(1) * 0.4 
+              Ly[a] = (np.random.rand(1) * 11) + 4
+              Lx[a] = 1/np.sqrt(2*E[a]/(pow(np.pi,2))-1/(pow(Ly[a],2)))
+
+              while np.isnan(Lx[a][0]) or Lx[a][0]>self.limit*2 or Ly[a][0]>self.limit*2:
+                E[a] = np.random.rand(1) * 0.4 
+                Ly[a] = (np.random.rand(1) * 11) + 4
+                Lx[a] = 1/np.sqrt(2*E[a]/(pow(np.pi,2))-1/(pow(Ly[a],2)))
+                #print(Lx[a])
+
+              cx[a] = (np.random.rand(1) - 0.5) * 16
+              cy[a] = (np.random.rand(1) - 0.5) * 16
+              while self.limit< abs(cx[a][0])+Lx[a][0]/2: 
+                cx[a] = (np.random.rand(1) - 0.5) * 16
+                #print("*"*10)
+              while self.limit< abs(cy[a][0])+Ly[a][0]/2: 
+                cy[a] = (np.random.rand(1) - 0.5) * 16
+                #print("*"*10)
+                
+            bar = progressbar.ProgressBar()
+            for i in bar(range(self.number)):
+                args = (self.mesh,Lx[i],Ly[i],cx[i],cy[i])
+                potential = self.potential_generator(args)
+                
+                E_analytical = 0.5*(np.pi**2)*(pow(Lx[i],-2)+pow(Ly[i],-2))
+                
+                
+                data[i,:,:,0] = potential
+                labels[i,0] = E_analytical
+            
+            with h5py.File(self.filename, 'w') as F:
+                F.create_dataset('potential', data=data, compression='gzip')
+                F.create_dataset('energy', data=labels, compression='gzip')
+                F.create_dataset('Lx', data=Lx, compression='gzip')
+                F.create_dataset('Ly', data=Ly, compression='gzip')
+        
+        return data, labels
